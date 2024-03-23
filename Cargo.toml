@@ -1,0 +1,19 @@
+[package]
+name = "php-ext-model"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.4.2" }
+tokenizers = "0.15.2"
+ext-php-rs = "0.12.0"
+hf-hub = { version = "0.3.2", features = ["tokio"] }
+anyhow = "1.0.81"
+candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.4.2" }
+candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.4.2" }
+serde_json = "1.0.114"
+
+[lib]
+crate-type = ["cdylib"]
