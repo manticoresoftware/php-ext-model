@@ -85,7 +85,8 @@ impl Model {
 		let token_ids = Tensor::new(&tokens[..], device).unwrap().unsqueeze(0).unwrap();
 		let token_type_ids = token_ids.zeros_like().unwrap();
 		let ys = self.model.forward(&token_ids, &token_type_ids).unwrap();
-		let ys_vec = ys.mean(1).unwrap().flatten_all().unwrap().to_vec1().unwrap();
+		let cls_embedding = ys.get(0).unwrap().get(0).unwrap();
+		let ys_vec = cls_embedding.flatten_all().unwrap().to_vec1().unwrap();
 		ys_vec
 	}
 }
