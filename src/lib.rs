@@ -13,7 +13,7 @@ use anyhow::{Error as E, Result};
 use candle_core::{Device, Tensor};
 use candle_nn::VarBuilder;
 use hf_hub::{api::sync::Api, Repo, RepoType};
-use tokenizers::Tokenizer;
+use tokenizers::{Tokenizer, TruncationParams};
 
 fn build_model_and_tokenizer(model_id: String, revision: String, use_pth: bool) -> Result<(BertModel, Tokenizer)> {
   let device = Device::Cpu;
@@ -73,9 +73,12 @@ impl Model {
   /// @return array<string>
 	pub fn predict(&mut self, text: String) -> Vec<f32> {
 		let device = &self.model.device;
+		let mut truncation = TruncationParams::default();
+		truncation.max_length = 128;
+		truncation.strategy = tokenizers::tokenizer::TruncationStrategy::LongestFirst;
   	let tokenizer = self.tokenizer
 	    .with_padding(None)
-	    .with_truncation(None)
+	    .with_truncation(Some(truncation))
 	    .map_err(E::msg).unwrap();
 		let tokens = tokenizer
 			.encode(text.clone(), true)
