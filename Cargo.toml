@@ -14,6 +14,7 @@ anyhow = "1.0.81"
 candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.4.2" }
 candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.4.2" }
 serde_json = "1.0.114"
+serde = "1.0.197"
 
 [lib]
 crate-type = ["cdylib"]

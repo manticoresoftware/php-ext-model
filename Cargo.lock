@@ -1694,6 +1694,7 @@ dependencies = [
  "candle-transformers",
  "ext-php-rs",
  "hf-hub",
+ "serde",
  "serde_json",
  "tokenizers",
 ]
