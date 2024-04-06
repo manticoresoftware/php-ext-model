@@ -14,7 +14,7 @@ use candle_core::{Device, Tensor};
 use candle_nn::VarBuilder;
 use hf_hub::{api::sync::Api, Repo, RepoType};
 use serde_json::Value;
-use tokenizers::{Tokenizer, TruncationParams};
+use tokenizers::Tokenizer;
 
 fn build_model_and_tokenizer(
     model_id: String,
@@ -114,13 +114,10 @@ impl Model {
     /// @return array<string>
     pub fn predict(&mut self, text: String) -> Vec<f32> {
         let device = &self.model.device;
-        let mut truncation = TruncationParams::default();
-        truncation.max_length = self.max_input_len;
-        truncation.strategy = tokenizers::tokenizer::TruncationStrategy::LongestFirst;
         let tokenizer = self
             .tokenizer
             .with_padding(None)
-            .with_truncation(Some(truncation))
+            .with_truncation(None)
             .map_err(E::msg)
             .unwrap();
         let tokens = tokenizer
@@ -129,22 +126,27 @@ impl Model {
             .unwrap()
             .get_ids()
             .to_vec();
-        let token_ids = Tensor::new(&tokens[..], device).unwrap().unsqueeze(0).unwrap();
-        let token_type_ids = token_ids.zeros_like().unwrap();
-        let embeddings = self.model.forward(&token_ids, &token_type_ids).unwrap();
 
-        // Apply some avg-pooling by taking the mean embedding value for all tokens (including padding)
-        let (n_sentences, n_tokens, _hidden_size) = embeddings.dims3().unwrap();
-        let embeddings = (embeddings.sum(1).unwrap() / (n_tokens as f64)).unwrap();
-
+        let chunks = chunk_input_tokens(&tokens, self.max_input_len, (self.max_input_len / 10) as usize);
         let mut results: Vec<Vec<f32>> = Vec::new();
-        for j in 0..n_sentences {
-            let e_j = embeddings.get(j).unwrap();
-            let mut emb: Vec<f32> = e_j.to_vec1().unwrap();
-            normalize(&mut emb);
-            results.push(emb);
+        for chunk in &chunks {
+            let token_ids = Tensor::new(&chunk[..], device).unwrap().unsqueeze(0).unwrap();
+            let token_type_ids = token_ids.zeros_like().unwrap();
+            let embeddings = self.model.forward(&token_ids, &token_type_ids).unwrap();
+
+            // Apply some avg-pooling by taking the mean embedding value for all tokens (including padding)
+            let (n_sentences, n_tokens, _hidden_size) = embeddings.dims3().unwrap();
+            let embeddings = (embeddings.sum(1).unwrap() / (n_tokens as f64)).unwrap();
+
+            for j in 0..n_sentences {
+                let e_j = embeddings.get(j).unwrap();
+                let mut emb: Vec<f32> = e_j.to_vec1().unwrap();
+                normalize(&mut emb);
+                results.push(emb);
+                break;
+            }
         }
-        results.get(0).unwrap().clone()
+        get_mean_vector(&results)
     }
 }
 
@@ -157,4 +159,44 @@ pub fn get_module(module: ModuleBuilder) -> ModuleBuilder {
 pub fn normalize(v: &mut Vec<f32>) {
     let length: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
     v.iter_mut().for_each(|x| *x /= length);
+}
+
+fn chunk_input_tokens(tokens: &[u32], max_seq_len: usize, stride: usize) -> Vec<Vec<u32>> {
+    let mut chunks = Vec::new();
+    let mut start = 0;
+
+    while start < tokens.len() {
+        let end = std::cmp::min(start + max_seq_len, tokens.len());
+        let chunk = tokens[start..end].to_vec();
+        chunks.push(chunk);
+        start += max_seq_len - stride;
+    }
+
+    chunks
+}
+
+fn get_mean_vector(results: &Vec<Vec<f32>>) -> Vec<f32> {
+    if results.is_empty() {
+        return Vec::new();
+    }
+
+    let num_cols = results[0].len();
+    let mut mean_vector = vec![0.0; num_cols];
+
+    let mut weight_sum = 0.0;
+
+    for (i, row) in results.iter().enumerate() {
+        let weight = if i == 0 { 1.2 } else { 1.0 }; // Adjust the weight for the first chunk here
+        weight_sum += weight;
+
+        for (j, val) in row.iter().enumerate() {
+            mean_vector[j] += weight * val;
+        }
+    }
+
+    for val in &mut mean_vector {
+        *val /= weight_sum;
+    }
+
+    mean_vector
 }
